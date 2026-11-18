@@ -1,0 +1,9 @@
+__pycache__/
+.claude/
+
+# Footage, GPS tracks and review labels stay on the local machine.
+*.mp4
+potholes.csv
+pothole_labels.json
+review.html
+snapshots/

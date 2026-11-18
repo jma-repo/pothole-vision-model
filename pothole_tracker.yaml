@@ -1,0 +1,11 @@
+# Tracker settings for detect_tesla.py. Ultralytics' default tracker (TrackTrack as of 8.4) only starts tracks at
+# conf >= 0.7, which would override --conf, so the script pins this ByteTrack config.
+# fuse_score is off: scaling IoU by confidence (often 0.3-0.5 for real potholes) kept a pothole near the car, which
+# moves a lot between frames, from ever matching its own track.
+tracker_type: bytetrack
+track_high_thresh: 0.25
+track_low_thresh: 0.1
+new_track_thresh: 0.25
+track_buffer: 30
+match_thresh: 0.8
+fuse_score: False
