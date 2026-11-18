@@ -2,7 +2,7 @@
 
     python build_review.py <results dir> --clips <folder with the source clips>
 
-Open <results dir>/review.html in Chrome or Edge. Labels are kept in the browser as you go; "导出标注" saves them
+Open <results dir>/review.html in Chrome or Edge. Labels are kept in the browser as you go; "Export labels" saves them
 to pothole_labels.json for retraining. Coordinates are the car's position when the pothole was last in view, so
 the pothole itself is a few metres ahead along the heading.
 """
@@ -105,11 +105,11 @@ def main() -> None:
 
 
 TEMPLATE = r"""<!doctype html>
-<html lang="zh-CN">
+<html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>坑洞审核</title>
+<title>Pothole review</title>
 <style>
 :root {
   --bg: #f4f5f7; --panel: #fff; --text: #1c2230; --muted: #6b7280; --line: #e2e5ea; --hover: #eef2fb;
@@ -167,45 +167,45 @@ kbd { font: 11px ui-monospace, monospace; padding: 0 4px; border-radius: 3px; ba
 </head>
 <body>
 <header>
-  <h1>坑洞审核</h1>
+  <h1>Pothole review</h1>
   <div class="progress"><div id="counts"></div><div class="bar" id="bar"></div></div>
-  <label>显示 <select id="filter">
-    <option value="all">全部</option><option value="todo">未审</option><option value="yes">是坑</option>
-    <option value="no">不是坑</option><option value="unsure">不确定</option></select></label>
-  <label>排序 <select id="sort"><option value="time">按时间</option><option value="conf">按置信度</option></select></label>
-  <button id="export">导出标注</button>
-  <label class="btn">导入<input type="file" id="import" accept=".json" hidden></label>
-  <div id="warn">这个浏览器不允许本地保存，关掉页面前记得点“导出标注”。</div>
+  <label>Show <select id="filter">
+    <option value="all">All</option><option value="todo">Not reviewed</option><option value="yes">Pothole</option>
+    <option value="no">Not a pothole</option><option value="unsure">Unsure</option></select></label>
+  <label>Sort <select id="sort"><option value="time">By time</option><option value="conf">By confidence</option></select></label>
+  <button id="export">Export labels</button>
+  <label class="btn">Import<input type="file" id="import" accept=".json" hidden></label>
+  <div id="warn">This browser won't save labels locally. Export them before you close the page.</div>
 </header>
 <main>
   <nav id="list"></nav>
   <section id="viewer">
     <canvas id="crop" width="1280" height="720"></canvas>
     <div class="media">
-      <div><img id="frame" alt="完整画面"><div class="cap">完整画面（红框是模型检出的位置）</div></div>
-      <div><video id="video" muted playsinline controls></video><div class="cap">前后几秒的视频，0.5 倍速循环</div></div>
+      <div><img id="frame" alt="Full frame"><div class="cap">Full frame (red box: the detection)</div></div>
+      <div><video id="video" muted playsinline controls></video><div class="cap">The seconds around it, looped at 0.5× speed</div></div>
     </div>
   </section>
   <aside>
     <div id="meta"></div>
     <div class="decide">
-      <button class="yes" data-label="yes">是坑 <kbd>Y</kbd></button>
-      <button class="no" data-label="no">不是坑 <kbd>N</kbd></button>
-      <button class="unsure" data-label="unsure">不确定 <kbd>U</kbd></button>
+      <button class="yes" data-label="yes">Pothole <kbd>Y</kbd></button>
+      <button class="no" data-label="no">Not a pothole <kbd>N</kbd></button>
+      <button class="unsure" data-label="unsure">Unsure <kbd>U</kbd></button>
     </div>
-    <div class="nav"><button id="prev">← 上一个</button><button id="next">下一个 →</button></div>
-    <iframe id="map" title="卫星地图"></iframe>
-    <div class="links"><a id="gmaps" target="_blank" rel="noopener">在 Google 地图打开</a> ·
-      <a id="street" target="_blank" rel="noopener">街景（朝行驶方向）</a></div>
-    <p class="note">坐标是车的位置（坑最后出现在画面里的那一刻），坑本身在车前方几米。</p>
+    <div class="nav"><button id="prev">← Previous</button><button id="next">Next →</button></div>
+    <iframe id="map" title="Satellite map"></iframe>
+    <div class="links"><a id="gmaps" target="_blank" rel="noopener">Open in Google Maps</a> ·
+      <a id="street" target="_blank" rel="noopener">Street View (facing the direction of travel)</a></div>
+    <p class="note">The pin is the car's position when the pothole was last in view; the pothole is a few metres ahead.</p>
     <div id="near"></div>
-    <p class="keys">快捷键：Y 是坑 · N 不是坑 · U 不确定 · Backspace 清除 · ← → 切换 · 空格 播放/暂停</p>
+    <p class="keys">Keys: Y pothole · N not a pothole · U unsure · Backspace clear · ← → move · Space play/pause</p>
   </aside>
 </main>
 <script>
 const DATA = __DATA__;
 const KEY = "pothole-review-labels";
-const NAMES = { yes: "是坑", no: "不是坑", unsure: "不确定" };
+const NAMES = { yes: "pothole", no: "not a pothole", unsure: "unsure" };
 const COLORS = { yes: "var(--yes)", no: "var(--no)", unsure: "var(--unsure)" };
 const $ = id => document.getElementById(id);
 const byId = new Map(DATA.map((c, i) => [c.id, i]));
@@ -252,8 +252,8 @@ function counts() {
   const n = { yes: 0, no: 0, unsure: 0 };
   for (const c of DATA) { const l = labelOf(c); if (l) n[l]++; }
   const done = n.yes + n.no + n.unsure;
-  $("counts").textContent = `已审 ${done} / ${DATA.length} · 是坑 ${n.yes} · 不是坑 ${n.no} · 不确定 ${n.unsure}` +
-    (done === DATA.length ? " · 全部审完，记得导出" : "");
+  $("counts").textContent = `Reviewed ${done} / ${DATA.length} · pothole ${n.yes} · not a pothole ${n.no} · unsure ${n.unsure}` +
+    (done === DATA.length ? " · all done, remember to export" : "");
   $("bar").replaceChildren(...["yes", "no", "unsure"].map(k => {
     const s = document.createElement("span");
     s.style.width = (100 * n[k] / DATA.length) + "%"; s.style.background = COLORS[k];
@@ -263,15 +263,15 @@ function counts() {
 
 function show() {
   counts();
-  if (!order.length) { $("meta").textContent = "这个筛选下没有检出。"; return; }
+  if (!order.length) { $("meta").textContent = "No detections match this filter."; return; }
   const c = DATA[order[pos]];
   [...$("list").children].forEach((b, p) => b.classList.toggle("cur", p === pos));
   $("list").children[pos].scrollIntoView({ block: "nearest" });
-  const rows = [["时间", c.seen_at.slice(0, 19)], ["片段", c.clip], ["置信度", c.conf.toFixed(2)],
-    ["检出帧数", c.hits], ["车速", c.speed_kmh == null ? "—" : c.speed_kmh + " km/h"],
-    ["朝向", c.heading == null ? "—" : Math.round(c.heading) + "°"]];
+  const rows = [["Time", c.seen_at.slice(0, 19)], ["Clip", c.clip], ["Confidence", c.conf.toFixed(2)],
+    ["Frames detected", c.hits], ["Speed", c.speed_kmh == null ? "—" : c.speed_kmh + " km/h"],
+    ["Heading", c.heading == null ? "—" : Math.round(c.heading) + "°"]];
   const head = document.createElement("div");
-  head.textContent = `第 ${pos + 1} / ${order.length} 个` + (labelOf(c) ? ` · 已标：${NAMES[labelOf(c)]}` : "");
+  head.textContent = `${pos + 1} of ${order.length}` + (labelOf(c) ? ` · labelled ${NAMES[labelOf(c)]}` : "");
   const dl = document.createElement("dl");
   for (const [k, v] of rows) {
     const dt = document.createElement("dt"), dd = document.createElement("dd");
@@ -302,7 +302,7 @@ function show() {
   const near = $("near");
   near.replaceChildren();
   if (c.near.length) {
-    near.append(`${c.near.length} 个其他检出在 20 米内，可能是同一个坑：`);
+    near.append(`${c.near.length} other detection${c.near.length > 1 ? "s" : ""} within 20 m, possibly the same pothole: `);
     for (const id of c.near) {
       const o = DATA[byId.get(id)], b = document.createElement("button");
       b.textContent = shortTime(o) + (labelOf(o) ? " · " + NAMES[labelOf(o)] : "");
@@ -370,7 +370,7 @@ async function importLabels(file) {
   }
   saveLabels();
   rebuild(order[pos]);
-  alert(`导入了 ${n} 条标注`);
+  alert(`Imported ${n} labels`);
 }
 
 $("video").addEventListener("timeupdate", () => {
