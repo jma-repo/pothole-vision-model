@@ -69,10 +69,37 @@ For comparison, an off-the-shelf open-vocabulary detector (YOLOE-26s, prompted w
   - reflections on wet pavement, which are easy to spot in the video because they move
   - oil stains and asphalt crack filler, which are dark but cast no shadow
 
-  These four cases are the hard negatives for the next round of training.
+  These four cases became the hard negatives in the retraining experiment below.
 
 ![Real Tesla detections](docs/tesla_examples.jpg)
 *Top: potholes the model found on a Calgary arterial in late February. Bottom: things that fooled it.*
+
+### Retraining on the review labels
+
+The next experiment fine-tuned the model on the review labels and tested it on drives it had not seen. The test set is four separate drives: 34 clips with 31 confirmed potholes and 14 rejected detections. `build_finetune.py` turned the other 27 reviewed clips into training data:
+
+- 193 frames with confirmed potholes, taken only where the pothole was close enough to see clearly
+- 74 frames with rejected detections, as hard negatives
+- 135 plain-road frames with nothing pothole-like in them
+- all 22,281 RDD2022 training images, so that the model keeps what it learned there
+
+`eval_labels.py` then compared each new model's detections on the held-out drives with the original review.
+
+| Model | Confirmed potholes kept (of 31) | Rejected detections kept (of 14) | New detections nobody reviewed | RDD2022 pothole mAP50 |
+|---|---|---|---|---|
+| Original | 31 | 14 | 0 | 0.527 |
+| Fine-tune 1 | 27 | 6 | 43 | 0.408 |
+| Fine-tune 2 | 27 | 6 | 48 | 0.525 |
+| Original, with fine-tune 2 as a second opinion | 25 | 7 | 0 | – |
+| Original, confidence ≥ 0.45 instead of 0.25 | 22 | 5 | 0 | – |
+
+The fine-tuned models produce their own tracks, so `eval_labels.py` matches them to the reviewed ones by clip, time (±0.5 s) and GPS (within 20 m). The last two rows keep the original tracks, so their counts are exact.
+
+- **Fine-tuning removed more than half of the known false alarms but created new ones.** Both fine-tunes dropped 8 of the 14 rejected detections and kept 27 of 31 potholes. They also flagged 43 and 48 spots that the original model had not. Judging by the snapshots, most of these are faint marks on wet-looking pavement. 35 of the 48 came from a single afternoon's drive.
+- **The first fine-tune forgot part of RDD2022.** It trained for 20 epochs on a 4,000-image sample of RDD2022 with Ultralytics' default warm-up, and its pothole mAP50 fell from 0.527 to 0.408. The second trained for 4 epochs with SGD at a learning rate of 0.002, without warm-up and on all of RDD2022, and held it at 0.525.
+- **A second opinion did no better than a stricter threshold.** Here the original model proposes potholes and the fine-tuned model has to find the same pothole in at least 3 frames. On the held-out drives, precision rose from 69% to 78% at the cost of 6 of the 31 potholes. Raising the confidence threshold to 0.45 gives 81% at the cost of 9. With 45 reviewed detections, the difference is within noise.
+
+The original model therefore stays the default. A person reviews every detection anyway. Rejecting a false alarm takes one keypress, but nobody ever sees a missed pothole. Most confirmed potholes in both the training and the test drives come from a single day, 17 November 2026 (37 of 51 and 28 of 31), so these numbers mostly describe that day's conditions. The next round of training needs labelled drives from more days and weather, and a held-out set large enough to tell a real gain from noise.
 
 ### Ranking by cost
 
@@ -117,6 +144,12 @@ python build_review.py results --clips E:/TeslaCam
 
 # 5. Rank and map: open results/map.html
 python build_map.py results --labels pothole_labels.json
+
+# 6. Optional: fine-tune on the review labels with whole drives held out, then score the new model on those drives
+python build_finetune.py --labels pothole_labels.json --clips E:/TeslaCam --weights models/pothole_rdd_yolo26s.pt --rdd data/rdd2022_yolo --test 2026-01-23 2026-09-20 --out data/finetune
+yolo detect train model=models/pothole_rdd_yolo26s.pt data=data/finetune/finetune.yaml epochs=4 optimizer=SGD lr0=0.002 lrf=0.1 warmup_epochs=0 imgsz=640 batch=32 workers=2
+python detect_tesla.py E:/TeslaCam --weights runs/detect/train/weights/last.pt --out results_finetuned
+python eval_labels.py --labels pothole_labels.json --reviewed results --new results_finetuned --test 2026-01-23 2026-09-20
 ```
 
 If `--labels` is left out, the map reads the labels saved by the review page in the same browser. `results/potholes.csv` has one row per detection, with the time, confidence, box, latitude, longitude, heading, speed and snapshot. For browsers that cannot open local files, `serve_review.py` serves both pages over localhost.
@@ -131,17 +164,22 @@ If `--labels` is left out, the map reads the labels saved by the review page in 
 | `build_review.py` | Generates the review page |
 | `build_map.py` | Estimates size and cost for each pothole and generates the ranked map |
 | `serve_review.py` | Serves the pages locally, with video seeking |
+| `build_finetune.py` | Builds a fine-tuning set from the review labels, with rejected detections as hard negatives |
+| `eval_labels.py` | Scores a new run against the review labels on held-out drives |
 | `models/pothole_rdd_yolo26s.pt` | Trained weights (20 MB) |
+| `docs/research_notes.md` | Research directions parked for later, each with a first experiment |
 
 Dashcam footage, GPS tracks and review labels stay on the local machine and are not part of this repository.
 
 ## Next steps
 
-1. **Retrain with the review labels.** Use the 82 confirmed potholes as positives. Use the 33 rejected detections as hard negatives: snow, manhole covers, reflections, oil stains and crack filler. Then measure again on the same clips.
+1. **Label more drives before retraining again.** Two fine-tunes on 70 reviewed detections did not improve precision on held-out drives. The next attempt needs reviewed drives from more days and weather, and a larger held-out set.
 2. **Measure severity with the accelerometer.** Drive over a few known potholes on purpose, align the camera with the axle timing, and see whether the jolt predicts depth and damage. Severity is the biggest unknown in the cost model.
 3. **Compare against the City's own data.** Calgary publishes 311 pothole reports and repair status. Matching them against these detections would show which potholes were never reported and how much earlier the car saw them.
 4. **Replace guessed traffic with real counts.** Use Calgary's open traffic-volume and road-class data instead of inferring road type from the car's speed.
 5. **Locate potholes more precisely.** Estimate each pothole's own position, and its size from the closest frame, rather than using the car's position and the best-scoring frame.
+
+[docs/research_notes.md](docs/research_notes.md) expands on these and other directions.
 
 ## Credits and licences
 

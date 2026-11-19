@@ -10,7 +10,7 @@ import argparse
 import csv
 import re
 import struct
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import BinaryIO
@@ -21,6 +21,7 @@ from ultralytics import YOLO
 
 POTHOLE = "D40"
 TRACKER = Path(__file__).with_name("pothole_tracker.yaml")
+DEFAULT_CONF = 0.25
 
 
 @dataclass(frozen=True)
@@ -137,6 +138,7 @@ class Track:
     best_conf: float
     best_box: list[int]
     best_frame: np.ndarray
+    box_by_frame: dict[int, list[int]] = field(default_factory=dict)
 
 
 def track_potholes(weights: Path, clip: Path, conf: float) -> tuple[dict[int, Track], float, int]:
@@ -162,6 +164,7 @@ def track_potholes(weights: Path, clip: Path, conf: float) -> tuple[dict[int, Tr
                 t = tracks[tid] = Track(frame_idx, frame_idx, 0, 0.0, xyxy, frame)
             t.last_frame = frame_idx
             t.hits += 1
+            t.box_by_frame[frame_idx] = xyxy
             if c > t.best_conf:
                 t.best_conf, t.best_box, t.best_frame = c, xyxy, frame
     cap.release()
@@ -178,7 +181,7 @@ def main() -> None:
     ap.add_argument("inputs", nargs="+", type=Path, help="front-camera MP4s, or folders searched for *-front.mp4")
     ap.add_argument("--weights", type=Path, required=True)
     ap.add_argument("--out", type=Path, required=True)
-    ap.add_argument("--conf", type=float, default=0.25, help="detection confidence threshold")
+    ap.add_argument("--conf", type=float, default=DEFAULT_CONF, help="detection confidence threshold")
     ap.add_argument("--min-hits", type=int, default=3, help="frames a pothole must be detected in to count")
     args = ap.parse_args()
 
